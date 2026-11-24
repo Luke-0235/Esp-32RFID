@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>RFID Control Center</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--panel:#111a2b;--panel2:#172238;--line:#263550;--text:#eef4ff;--muted:#91a2bd;--blue:#62a5ff;--green:#4ade9b;--red:#ff647c}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#142849 0,#080d18 48%);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:760px;margin:auto;padding:22px 16px 60px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+h1{font-size:23px;margin:0;letter-spacing:-.5px}.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.pill{border:1px solid var(--line);border-radius:99px;padding:7px 11px;color:var(--muted);font-size:12px;white-space:nowrap}.pill.on{color:var(--green);border-color:#28664e}
+.card{background:linear-gradient(145deg,#131e32,#0e1728);border:1px solid var(--line);border-radius:18px;padding:17px;margin:13px 0;box-shadow:0 12px 35px #0003}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.muted{color:var(--muted)}.small{font-size:12px;color:var(--muted)}
+h2{font-size:16px;margin:0 0 13px}.big{font-size:20px;font-weight:750;overflow-wrap:anywhere;margin:8px 0}
+button,input,select{font:inherit}button{border:1px solid #31517e;background:#1b3558;color:white;padding:11px 14px;border-radius:12px;font-weight:650;cursor:pointer}
+button.primary{background:#286bd0;border-color:#4388ec}button.secondary{background:#1a263b;border-color:var(--line)}button.danger{background:#3a1d2b;border-color:#713147;color:#ffb6c3}button:disabled{opacity:.35;cursor:not-allowed}
+.actions{display:flex;gap:9px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tile{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:13px}.tile button{width:100%;margin-top:9px}
+input,select{width:100%;background:#0b1424;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px;margin:5px 0 10px}
+nav{display:flex;gap:7px;overflow:auto;margin:15px 0}nav button{flex:1;min-width:max-content;padding:10px}
+nav button.active{background:#244c80;border-color:#4a8ee4}
+.page{display:none}.page.active{display:block}
+.status{padding:12px;border-radius:12px;background:#0c1728;border:1px solid var(--line);color:var(--muted);margin-top:10px;overflow-wrap:anywhere}
+.log{border-bottom:1px solid var(--line);padding:10px 0;font-size:13px;overflow-wrap:anywhere}.log:last-child{border:0}
+.perms{display:grid;grid-template-columns:1fr 1fr;gap:8px}.perm{background:#0b1424;border:1px solid var(--line);padding:9px;border-radius:10px;font-size:13px}
+.notice{font-size:12px;line-height:1.5;color:#b7c5db}
+.hidden{display:none!important}
+@media(max-width:430px){.grid{grid-template-columns:1fr 1fr}.top{align-items:flex-start}.big{font-size:17px}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>RFID Control Center</h1><div class="sub">ESP32 Bluetooth access system</div></div>
+    <div id="blePill" class="pill">● Disconnected</div>
+  </div>
+
+  <section class="card">
+    <div class="row"><div><b>Device connection</b><div class="small">Connect to your ESP32 over BLE</div></div><button class="primary" id="connectBtn">Connect</button></div>
+    <div id="connectionText" class="status">Not connected. Turn on your ESP32 and connect.</div>
+  </section>
+
+  <nav>
+    <button class="active" data-page="home">Home</button>
+    <button data-page="controls">Controls</button>
+    <button data-page="cards">Cards</button>
+    <button data-page="history">History</button>
+  </nav>
+
+  <section id="home" class="page active">
+    <div class="card">
+      <div class="row"><b>Current login</b><span id="rolePill" class="pill">Logged out</span></div>
+      <div id="currentName" class="big">Scan an RFID card</div>
+      <div id="currentUid" class="small">Waiting for card...</div>
+      <div id="accessText" class="status">Your access level will appear here.</div>
+      <div class="actions" style="margin-top:12px"><button class="secondary" id="logoutBtn" disabled>Log out</button></div>
+    </div>
+    <div class="card">
+      <h2>Quick status</h2>
+      <div class="grid">
+        <div class="tile"><div class="small">Registered cards</div><div class="big" id="cardCount">0</div></div>
+        <div class="tile"><div class="small">Total scans</div><div class="big" id="scanCount">0</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="controls" class="page">
+    <div class="card"><h2>Hardware controls</h2><div class="small">Controls appear only when your logged-in card has permission.</div><div id="controlStatus" class="status">Log in with an authorized card first.</div></div>
+    <div class="grid">
+      <div class="tile" id="ledTile"><b>LED</b><div class="small">GPIO 26</div><div class="actions"><button id="ledOn">ON</button><button class="secondary" id="ledOff">OFF</button></div></div>
+      <div class="tile" id="servoTile"><b>Servo</b><div class="small">GPIO 25</div><input id="servoRange" type="range" min="0" max="180" value="90"><div class="row"><span class="small">Angle</span><b id="servoValue">90°</b></div><button id="servoSend">Move servo</button></div>
+      <div class="tile" id="buzzerTile"><b>Buzzer</b><div class="small">GPIO 32</div><button id="buzzSend">Play beep</button><button class="secondary" id="buzzStop">Stop</button></div>
+      <div class="tile" id="oledTile"><b>OLED message</b><div class="small">128 × 64 display</div><input id="oledMessage" maxlength="36" placeholder="Message for OLED"><button id="oledSend">Display message</button></div>
+      <div class="tile" id="otherTile" style="grid-column:1/-1"><b>Other ESP32 outputs</b><div class="small">Whitelisted outputs: GPIO 16, 17, 33</div><div class="grid" style="margin-top:8px"><button data-pin="16" class="extraOn">GPIO 16 ON</button><button data-pin="16" class="secondary extraOff">GPIO 16 OFF</button><button data-pin="17" class="extraOn">GPIO 17 ON</button><button data-pin="17" class="secondary extraOff">GPIO 17 OFF</button><button data-pin="33" class="extraOn">GPIO 33 ON</button><button data-pin="33" class="secondary extraOff">GPIO 33 OFF</button></div></div>
+    </div>
+  </section>
+
+  <section id="cards" class="page">
+    <div class="card"><h2>Card management</h2><div id="cardManageInfo" class="status">Administrator access required. Scan your first card to set up the admin account.</div><div id="cardList"></div></div>
+    <div class="card">
+      <h2>Backup phone database</h2>
+      <div class="notice">Cards and permissions are saved in this browser's local storage. Export a backup before clearing browser data or changing phones.</div>
+      <div class="actions" style="margin-top:12px"><button id="exportBtn">Export backup</button><button class="secondary" id="importBtn">Import backup</button><input id="importFile" type="file" accept="application/json" class="hidden"></div>
+    </div>
+  </section>
+
+  <section id="history" class="page">
+    <div class="card"><div class="row"><h2>Scan history</h2><button class="danger" id="clearHistory">Clear</button></div><div id="historyList" class="muted">No scans yet.</div></div>
+  </section>
+  <p class="notice">Demo security note: permissions are stored on this phone, not securely inside the ESP32. A modified client can spoof BLE messages, and basic RFID UIDs can be copied. This is suitable for learning and controlling harmless demo hardware, not securing a real door or valuables.</p>
+</main>
+
+<script>
+const SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const PERMISSIONS = ["LED","SERVO","OLED","BUZZER","OTHER"];
+let device=null, server=null, rxChar=null, txChar=null;
+let db = JSON.parse(localStorage.getItem("rfid_db") || "{}");
+let history = JSON.parse(localStorage.getItem("rfid_history") || "[]");
+let current = null;
+let pendingCard = null;
+
+const $ = id => document.getElementById(id);
+function saveDB(){localStorage.setItem("rfid_db",JSON.stringify(db));renderAll();}
+function saveHistory(){localStorage.setItem("rfid_history",JSON.stringify(history.slice(0,100)));renderAll();}
+function logEvent(uid,name,result){history.unshift({time:new Date().toLocaleString(),uid,name,result});saveHistory();}
+function setStatus(s){$("connectionText").textContent=s;}
+function connectedUI(on){
+  $("blePill").textContent=on?"● Connected":"● Disconnected";
+  $("blePill").classList.toggle("on",on);
+  $("connectBtn").textContent=on?"Disconnect":"Connect";
+}
+async function connectBLE(){
+  if(device && device.gatt.connected){device.gatt.disconnect();return;}
+  try{
+    if(!navigator.bluetooth){setStatus("Bluetooth is unavailable here. Open this GitHub Pages site in Bluefy and allow Bluetooth.");return;}
+    setStatus("Choose ESP32-Control in the Bluetooth picker...");
+    device=await navigator.bluetooth.requestDevice({filters:[{name:"ESP32-Control"}],optionalServices:[SERVICE]});
+    device.addEventListener("gattserverdisconnected",()=>{
+      connectedUI(false);server=rxChar=txChar=null;current=null;updateAccess();setStatus("Bluetooth disconnected.");
+    });
+    server=await device.gatt.connect();
+    const service=await server.getPrimaryService(SERVICE);
+    rxChar=await service.getCharacteristic(RX);
+    txChar=await service.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener("characteristicvaluechanged",handleNotification);
+    connectedUI(true);setStatus("Connected to "+device.name+". Scan an RFID card.");
+    await send("PING");
+  }catch(e){setStatus("Connection error: "+e.message);connectedUI(false);}
+}
+async function send(line){
+  if(!rxChar){setStatus("Connect to the ESP32 first.");return false;}
+  try{
+    const data=new TextEncoder().encode(line+"\n");
+    if(rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(data);
+    else await rxChar.writeValue(data);
+    return true;
+  }catch(e){setStatus("Send failed: "+e.message);return false;}
+}
+function handleNotification(event){
+  const msg=new TextDecoder().decode(event.target.value);
+  msg.split(/\r?\n/).filter(Boolean).forEach(handleMessage);
+}
+function handleMessage(msg){
+  const p=msg.split("|");
+  if(p[0]==="CARD"){handleCard(p[1]);}
+  else if(p[0]==="AUTH_OK"){setStatus("Logged in: "+(current?.name||p[1]));updateAccess();}
+  else if(p[0]==="DENIED"){setStatus("ESP32 denied: "+p.slice(1).join(" "));}
+  else if(p[0]==="LOGGED_OUT"){current=null;updateAccess();setStatus("Logged out.");}
+  else if(p[0]==="OK"){setStatus("Command successful: "+p.slice(1).join(" "));}
+  else if(p[0]==="PONG"||p[0]==="STATUS"){setStatus("ESP32 online. Scan a card.");}
+  else if(p[0]==="ERROR"){setStatus("ESP32 error: "+p.slice(1).join(" "));}
+}
+function handleCard(uid){
+  uid=uid.toUpperCase();pendingCard=uid;
+  $("currentUid").textContent="Card UID: "+uid;
+  const entry=db[uid];
+  if(entry){
+    current={uid,...entry};
+    send("AUTH|"+uid+"|"+entry.role+"|"+(entry.permissions||[]).join(","));
+    logEvent(uid,entry.name,"Recognized");
+    updateAccess();
+    return;
+  }
+  if(!Object.keys(db).length){
+    const name=prompt("First card detected. Give your ADMIN card a name:","Administrator");
+    if(!name){setStatus("Admin setup cancelled. Scan again to enroll.");return;}
+    db[uid]={name,role:"admin",permissions:[...PERMISSIONS]};
+    current={uid,...db[uid]};saveDB();
+    send("AUTH|"+uid+"|admin|"+PERMISSIONS.join(","));
+    logEvent(uid,name,"Admin enrolled");
+    setStatus("First card enrolled as administrator.");
+    return;
+  }
+  if(current && current.role==="admin"){
+    enrollUnknown(uid);
+  }else{
+    setStatus("UNKNOWN CARD — access denied. Ask an administrator to enroll it.");
+    logEvent(uid,"Unknown","Denied");
+  }
+}
+function enrollUnknown(uid){
+  const name=prompt("New card UID: "+uid+"\nEnter a name for this user:");
+  if(!name)return;
+  const role=prompt("Enter role: user (regular access) or admin","user");
+  if(!role)return;
+  const normalized=role.toLowerCase()==="admin"?"admin":"user";
+  let permissions=[...PERMISSIONS];
+  if(normalized!=="admin"){
+    const answer=prompt("Enter permissions separated by commas:\nLED, SERVO, OLED, BUZZER, OTHER\nExample: LED,SERVO","LED");
+    permissions=(answer||"").toUpperCase().split(",").map(x=>x.trim()).filter(x=>PERMISSIONS.includes(x));
+  }
+  db[uid]={name,role:normalized,permissions};
+  saveDB();
+  current={uid,...db[uid]};
+  send("AUTH|"+uid+"|"+normalized+"|"+permissions.join(","));
+  logEvent(uid,name,"Enrolled");
+  setStatus(name+" enrolled.");
+}
+function updateAccess(){
+  const logged=!!current;
+  $("currentName").textContent=logged?current.name:"Scan an RFID card";
+  $("currentUid").textContent=logged?"Card UID: "+current.uid:"Waiting for card...";
+  $("rolePill").textContent=logged?(current.role==="admin"?"Administrator":"User"):"Logged out";
+  $("accessText").textContent=logged?(current.role==="admin"?"Full administrator access": "Permissions: "+(current.permissions||[]).join(", ")):"Scan a registered card to log in.";
+  $("logoutBtn").disabled=!logged;
+  const admin=logged&&current.role==="admin";
+  $("cardManageInfo").textContent=admin?"Administrator mode: you can enroll and revoke cards.":"Administrator access required.";
+  $("cardManageInfo").style.color=admin?"var(--green)":"var(--muted)";
+  const perms=admin?PERMISSIONS:(current?.permissions||[]);
+  ["LED","SERVO","BUZZER","OLED","OTHER"].forEach((perm)=>{
+    const id={LED:"ledTile",SERVO:"servoTile",BUZZER:"buzzerTile",OLED:"oledTile",OTHER:"otherTile"}[perm];
+    $(id).classList.toggle("hidden",!perms.includes(perm));
+  });
+  $("controlStatus").textContent=logged?"Logged in as "+current.name+". Available controls are shown below.":"Log in with an authorized card first.";
+  renderCards();
+}
+function renderCards(){
+  const list=$("cardList");list.innerHTML="";
+  Object.entries(db).forEach(([uid,c])=>{
+    const div=document.createElement("div");div.className="log";
+    const title=document.createElement("b");title.textContent=c.name+" · "+c.role;
+    const detail=document.createElement("div");detail.className="small";detail.textContent=uid+" · "+(c.permissions||[]).join(", ");
+    div.append(title,detail);
+    if(current?.role==="admin" && uid!==current.uid){
+      const revoke=document.createElement("button");revoke.className="danger";revoke.textContent="Revoke";revoke.style.marginTop="7px";
+      revoke.onclick=()=>{if(confirm("Revoke "+c.name+"?")){delete db[uid];saveDB();}};
+      div.append(revoke);
+    }
+    list.append(div);
+  });
+}
+function renderAll(){
+  $("cardCount").textContent=Object.keys(db).length;
+  $("scanCount").textContent=history.length;
+  $("historyList").innerHTML="";
+  if(!history.length)$("historyList").textContent="No scans yet.";
+  history.forEach(h=>{
+    const d=document.createElement("div");d.className="log";
+    const b=document.createElement("b");b.textContent=h.name+" — "+h.result;
+    const s=document.createElement("div");s.className="small";s.textContent=h.time+" · "+h.uid;
+    d.append(b,s);$("historyList").append(d);
+  });
+  renderCards();
+}
+function need(perm){if(!current){setStatus("Scan an authorized card first.");return false;}if(current.role!=="admin"&&!(current.permissions||[]).includes(perm)){setStatus("Your card does not have "+perm+" permission.");return false;}return true;}
+
+$("connectBtn").onclick=connectBLE;
+$("logoutBtn").onclick=async()=>{await send("LOGOUT");current=null;updateAccess();};
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x===b));
+  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===b.dataset.page));
+});
+$("ledOn").onclick=()=>{if(need("LED"))send("CMD|LED|1");};
+$("ledOff").onclick=()=>{if(need("LED"))send("CMD|LED|0");};
+$("servoRange").oninput=()=>{$("servoValue").textContent=$("servoRange").value+"°";};
+$("servoSend").onclick=()=>{if(need("SERVO"))send("CMD|SERVO|"+$("servoRange").value);};
+$("buzzSend").onclick=()=>{if(need("BUZZER"))send("CMD|BUZZER|1200");};
+$("buzzStop").onclick=()=>{if(need("BUZZER"))send("CMD|BUZZER|0");};
+$("oledSend").onclick=()=>{if(need("OLED"))send("CMD|OLED|"+$("oledMessage").value.replace(/[|\r\n]/g," ").slice(0,36));};
+document.querySelectorAll(".extraOn").forEach(b=>b.onclick=()=>{if(need("OTHER"))send("CMD|OUT|"+b.dataset.pin+"|1");});
+document.querySelectorAll(".extraOff").forEach(b=>b.onclick=()=>{if(need("OTHER"))send("CMD|OUT|"+b.dataset.pin+"|0");});
+$("clearHistory").onclick=()=>{if(confirm("Clear scan history?")){history=[];saveHistory();}};
+$("exportBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify({db,history},null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="rfid-access-backup.json";a.click();URL.revokeObjectURL(a.href);
+};
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=async(e)=>{
+  const file=e.target.files[0];if(!file)return;
+  try{const data=JSON.parse(await file.text());if(!data.db||typeof data.db!=="object")throw Error("Invalid backup");db=data.db;history=Array.isArray(data.history)?data.history:[];saveDB();saveHistory();alert("Backup imported.");}
+  catch(err){alert("Import failed: "+err.message);}
+};
+renderAll();updateAccess();
+</script>
+</body>
+</html>
